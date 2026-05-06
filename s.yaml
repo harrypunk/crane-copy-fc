@@ -1,0 +1,42 @@
+# ------------------------------------
+#   官方手册: https://manual.serverless-devs.com/user-guide/aliyun/#fc3
+#   常见小贴士: https://manual.serverless-devs.com/user-guide/tips/
+#   有问题快来钉钉群问一下吧：33947367
+# ------------------------------------
+edition: 3.0.0
+name: hello-world-app
+access: "dev1"
+
+vars:
+  region: "cn-hongkong"
+
+resources:
+  hello_world:
+    component: fc3 
+    actions:       
+      pre-${regex('deploy|local')}: 
+        - component: fc3 build --dockerfile ./code/Dockerfile 
+    props:
+      region: ${vars.region}              
+      functionName: "crane-copy"
+      runtime: "custom-container"
+      description: 'hello world by serverless devs'
+      timeout: 60
+      memorySize: 512
+      cpu: 0.5
+      diskSize: 512
+      code: ./code
+      customContainerConfig:
+        image: "quay.io/skopeo/stable"
+        port: 8080
+      # triggers:
+      #   - triggerName: httpTrigger # 触发器名称
+      #     triggerType: http # 触发器类型
+      #     description: 'xxxx'
+      #     qualifier: LATEST # 触发服务的版本
+      #     triggerConfig:
+      #       authType: anonymous # 鉴权类型，可选值：anonymous、function
+      #       disableURLInternet: false # 是否禁用公网访问 URL
+      #       methods: # HTTP 触发器支持的访问方法，可选值：GET、POST、PUT、DELETE、HEAD
+      #         - GET
+      #         - POST
