@@ -13,24 +13,21 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// ImagePair represents a single image copy operation.
-type ImagePair struct {
-	Src  string `json:"src"`
-	Dest string `json:"dest"`
-}
-
 // CopyRequest is the expected JSON body for /invoke.
 type CopyRequest struct {
-	Images        []ImagePair `json:"images"`
-	MaxConcurrent int         `json:"max_concurrent"`
-	SrcUser       string      `json:"src_user"`
-	SrcPwd        string      `json:"src_pwd"`
-	DestUser      string      `json:"dest_user"`
-	DestPwd       string      `json:"dest_pwd"`
+	SrcPrefix     string   `json:"src_prefix"`
+	DestPrefix    string   `json:"dest_prefix"`
+	Images        []string `json:"images"`
+	MaxConcurrent int      `json:"max_concurrent"`
+	SrcUser       string   `json:"src_user"`
+	SrcPwd        string   `json:"src_pwd"`
+	DestUser      string   `json:"dest_user"`
+	DestPwd       string   `json:"dest_pwd"`
 }
 
 // CopyResult reports the outcome of a single image copy.
 type CopyResult struct {
+	Image string `json:"image"`
 	Src   string `json:"src"`
 	Dest  string `json:"dest"`
 	Error string `json:"error,omitempty"`
@@ -54,12 +51,14 @@ func (rk *registryKeychain) Resolve(target authn.Resource) (authn.Authenticator,
 	return authn.Anonymous, nil
 }
 
-func parseRegistry(ref string) (string, error) {
-	r, err := name.ParseReference(ref)
-	if err != nil {
-		return "", err
+func joinImage(prefix, image string) string {
+	if prefix == "" {
+		return image
 	}
-	return r.Context().RegistryStr(), nil
+	if prefix[len(prefix)-1] == '/' {
+		return prefix + image
+	}
+	return prefix + "/" + image
 }
 
 func main() {
@@ -81,20 +80,24 @@ func main() {
 			req.MaxConcurrent = 3
 		}
 
-		// Determine canonical registry names from the first image pair.
+		// Determine canonical registry names from the first resolved image.
 		var srcRegistry, destRegistry string
 		if len(req.Images) > 0 {
-			var err error
-			srcRegistry, err = parseRegistry(req.Images[0].Src)
+			srcRef := joinImage(req.SrcPrefix, req.Images[0])
+			r, err := name.ParseReference(srcRef)
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid src image: %v", err)})
 				return
 			}
-			destRegistry, err = parseRegistry(req.Images[0].Dest)
+			srcRegistry = r.Context().RegistryStr()
+
+			destRef := joinImage(req.DestPrefix, req.Images[0])
+			r, err = name.ParseReference(destRef)
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid dest image: %v", err)})
 				return
 			}
+			destRegistry = r.Context().RegistryStr()
 		}
 
 		// Build authenticators.
@@ -123,18 +126,20 @@ func main() {
 		for i, img := range req.Images {
 			i, img := i, img // capture loop vars
 			g.Go(func() error {
+				srcRef := joinImage(req.SrcPrefix, img)
+				destRef := joinImage(req.DestPrefix, img)
 				opts := []crane.Option{
 					crane.WithAuthFromKeychain(kc),
 					crane.WithContext(ctx),
 				}
-				if err := crane.Copy(img.Src, img.Dest, opts...); err != nil {
+				if err := crane.Copy(srcRef, destRef, opts...); err != nil {
 					mu.Lock()
-					results[i] = CopyResult{Src: img.Src, Dest: img.Dest, Error: err.Error()}
+					results[i] = CopyResult{Image: img, Src: srcRef, Dest: destRef, Error: err.Error()}
 					mu.Unlock()
 					return nil // continue processing other images
 				}
 				mu.Lock()
-				results[i] = CopyResult{Src: img.Src, Dest: img.Dest}
+				results[i] = CopyResult{Image: img, Src: srcRef, Dest: destRef}
 				mu.Unlock()
 				return nil
 			})
@@ -156,5 +161,5 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"message": "hello world"})
 	})
 
-	_ = r.Run(":8080")
+	r.Run(":8080")
 }

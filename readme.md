@@ -6,14 +6,18 @@ An Aliyun Function Compute (FC3) custom-container service that copies Docker ima
 
 ### `POST /invoke`
 
-Accepts a JSON payload with a list of image pairs and copies them concurrently.
+Accepts a JSON payload with image names (tags) and copies them from a source registry prefix to a destination registry prefix.
 
 **Request body:**
 
 ```json
 {
+  "src_prefix": "docker.io/library",
+  "dest_prefix": "registry.cn-hongkong.aliyuncs.com/myproj",
   "images": [
-    {"src": "docker.io/library/nginx:1.25", "dest": "registry.cn-hongkong.aliyuncs.com/myproj/nginx:1.25"}
+    "nginx:1.25",
+    "redis:7.2",
+    "busybox:1.36"
   ],
   "max_concurrent": 3,
   "src_user": "",
@@ -25,20 +29,24 @@ Accepts a JSON payload with a list of image pairs and copies them concurrently.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `images` | `[]object` | List of `{src, dest}` image references |
+| `src_prefix` | `string` | Source registry + namespace prefix (e.g. `docker.io/library`) |
+| `dest_prefix` | `string` | Destination registry + namespace prefix (e.g. `registry.cn-hongkong.aliyuncs.com/myproj`) |
+| `images` | `[]string` | Image names/tags to copy (e.g. `nginx:1.25`) |
 | `max_concurrent` | `int` | Max parallel copies (default: 3) |
 | `src_user` | `string` | Source registry username (optional) |
 | `src_pwd` | `string` | Source registry password (optional) |
 | `dest_user` | `string` | Destination registry username (optional) |
 | `dest_pwd` | `string` | Destination registry password (optional) |
 
+Full image references are built by joining prefix + `images[i]` with `/`.
+
 **Response:**
 
 ```json
 {
   "results": [
-    {"src": "...", "dest": "..."},
-    {"src": "...", "dest": "...", "error": "..."}
+    {"image": "nginx:1.25", "src": "docker.io/library/nginx:1.25", "dest": "registry.cn-hongkong.aliyuncs.com/myproj/nginx:1.25"},
+    {"image": "redis:7.2", "src": "docker.io/library/redis:7.2", "dest": "registry.cn-hongkong.aliyuncs.com/myproj/redis:7.2", "error": "..."}
   ]
 }
 ```
@@ -53,12 +61,11 @@ Each image gets its own result entry. Errors on individual images do not abort t
 ## Local test
 
 ```bash
-cd code
 go run main.go
 
 curl -X POST http://localhost:8080/invoke \
   -H 'Content-Type: application/json' \
-  -d @../example.event.json
+  -d @example.event.json
 ```
 
 ## Deploy to Aliyun FC
@@ -75,11 +82,10 @@ s deploy -y
 
 ```
 .
-├── code/
-│   ├── main.go       # HTTP server
-│   ├── Dockerfile    # Custom container build
-│   ├── go.mod
-│   └── go.sum
+├── main.go           # HTTP server
+├── Dockerfile        # Custom container build
+├── go.mod
+├── go.sum
 ├── s.yaml            # Serverless Devs deployment config
 └── example.event.json # Sample /invoke payload
 ```

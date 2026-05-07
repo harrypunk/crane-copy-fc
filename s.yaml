@@ -15,7 +15,7 @@ resources:
     component: fc3 
     actions:       
       pre-${regex('deploy|local')}: 
-        - component: fc3 build --dockerfile ./code/Dockerfile 
+        - component: fc3 build --dockerfile ./Dockerfile 
     props:
       region: ${vars.region}              
       functionName: "crane-copy"
@@ -25,7 +25,7 @@ resources:
       memorySize: 512
       cpu: 0.5
       diskSize: 512
-      code: ./code
+      code: .
       customContainerConfig:
         image: "quay.io/skopeo/stable"
         port: 8080

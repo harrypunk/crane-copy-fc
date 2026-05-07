@@ -1,17 +1,10 @@
 {
+  "src_prefix": "docker.io/library",
+  "dest_prefix": "registry.cn-hongkong.aliyuncs.com/myproj",
   "images": [
-    {
-      "src": "docker.io/library/nginx:1.25",
-      "dest": "registry.cn-hongkong.aliyuncs.com/myproj/nginx:1.25"
-    },
-    {
-      "src": "docker.io/library/redis:7.2",
-      "dest": "registry.cn-hongkong.aliyuncs.com/myproj/redis:7.2"
-    },
-    {
-      "src": "docker.io/library/busybox:1.36",
-      "dest": "registry.cn-hongkong.aliyuncs.com/myproj/busybox:1.36"
-    }
+    "nginx:1.25",
+    "redis:7.2",
+    "busybox:1.36"
   ],
   "max_concurrent": 2,
   "src_user": "",
