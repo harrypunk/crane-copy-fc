@@ -1,85 +1,85 @@
-> 注：当前项目为 Serverless Devs 应用，由于应用中会存在需要初始化才可运行的变量（例如应用部署地区、函数名等等），所以**不推荐**直接 Clone 本仓库到本地进行部署或直接复制 s.yaml 使用，**强烈推荐**通过 `s init ${模版名称}` 的方法或应用中心进行初始化，详情可参考[部署 & 体验](#部署--体验) 。
+# crane-copy-fc
 
-# start-fc3-custom-container-golang 帮助文档
+An Aliyun Function Compute (FC3) custom-container service that copies Docker images between registries using [`go-containerregistry`](https://github.com/google/go-containerregistry) (`crane.Copy`).
 
-<p align="center" class="flex justify-center">
-    <a href="https://www.serverless-devs.com" class="ml-1">
-    <img src="http://editor.devsapp.cn/icon?package=start-fc3-custom-container-golang&type=packageType">
-  </a>
-  <a href="http://www.devsapp.cn/details.html?name=start-fc3-custom-container-golang" class="ml-1">
-    <img src="http://editor.devsapp.cn/icon?package=start-fc3-custom-container-golang&type=packageVersion">
-  </a>
-  <a href="http://www.devsapp.cn/details.html?name=start-fc3-custom-container-golang" class="ml-1">
-    <img src="http://editor.devsapp.cn/icon?package=start-fc3-custom-container-golang&type=packageDownload">
-  </a>
-</p>
+## API
 
-<description>
+### `POST /invoke`
 
-快速部署一个 Custom Container Golang 的 Hello World 函数到阿里云函数计算。
+Accepts a JSON payload with a list of image pairs and copies them concurrently.
 
-</description>
+**Request body:**
 
-<codeUrl>
+```json
+{
+  "images": [
+    {"src": "docker.io/library/nginx:1.25", "dest": "registry.cn-hongkong.aliyuncs.com/myproj/nginx:1.25"}
+  ],
+  "max_concurrent": 3,
+  "src_user": "",
+  "src_pwd": "",
+  "dest_user": "aliyun_acr_username",
+  "dest_pwd": "aliyun_acr_password"
+}
+```
 
-- [:smiley_cat: 代码](https://github.com/devsapp/start-fc/tree/main/custom-container/golang/src)
+| Field | Type | Description |
+|-------|------|-------------|
+| `images` | `[]object` | List of `{src, dest}` image references |
+| `max_concurrent` | `int` | Max parallel copies (default: 3) |
+| `src_user` | `string` | Source registry username (optional) |
+| `src_pwd` | `string` | Source registry password (optional) |
+| `dest_user` | `string` | Destination registry username (optional) |
+| `dest_pwd` | `string` | Destination registry password (optional) |
 
-</codeUrl>
-<preview>
+**Response:**
 
-</preview>
+```json
+{
+  "results": [
+    {"src": "...", "dest": "..."},
+    {"src": "...", "dest": "...", "error": "..."}
+  ]
+}
+```
 
-## 前期准备
+Each image gets its own result entry. Errors on individual images do not abort the whole batch.
 
-使用该项目，您需要有开通以下服务并拥有对应权限：
+### Other endpoints
 
-<service>
+- `POST /initialize` — FC initialization hook, returns `{"message":"initialize ok"}`
+- `GET /` — Health check, returns `{"message":"hello world"}`
 
-| 服务/业务 | 权限               |
-| --------- | ------------------ |
-| 函数计算  | AliyunFCFullAccess |
+## Local test
 
-</service>
+```bash
+cd code
+go run main.go
 
-<remark>
+curl -X POST http://localhost:8080/invoke \
+  -H 'Content-Type: application/json' \
+  -d @../example.event.json
+```
 
-</remark>
+## Deploy to Aliyun FC
 
-<disclaimers>
+Make sure you have [Serverless Devs](https://www.serverless-devs.com) installed and configured.
 
-</disclaimers>
+```bash
+s deploy -y
+```
 
-## 部署 & 体验
+> **Note:** Update `s.yaml` `customContainerConfig.image` to your actual ACR image URL before deploying.
 
-<appcenter>
+## Project structure
 
-- :fire: 通过 [Serverless 应用中心](https://fcnext.console.aliyun.com/applications/create?template=start-fc3-custom-container-golang) ，
-  [![Deploy with Severless Devs](https://img.alicdn.com/imgextra/i1/O1CN01w5RFbX1v45s8TIXPz_!!6000000006118-55-tps-95-28.svg)](https://fcnext.console.aliyun.com/applications/create?template=start-fc3-custom-container-golang) 该应用。
-
-</appcenter>
-<deploy>
-
-- 通过 [Serverless Devs Cli](https://www.serverless-devs.com/serverless-devs/install) 进行部署：
-  - [安装 Serverless Devs Cli 开发者工具](https://www.serverless-devs.com/serverless-devs/install) ，并进行[授权信息配置](https://docs.serverless-devs.com/fc/config) ；
-  - 初始化项目：`s init start-fc3-custom-container-golang -d start-fc3-custom-container-golang`
-  - 进入项目，并进行项目部署：`cd start-fc3-custom-container-golang && s deploy -y`
-
-</deploy>
-
-<devgroup>
-
-## 开发者社区
-
-您如果有关于错误的反馈或者未来的期待，您可以在 [Serverless Devs repo Issues](https://github.com/serverless-devs/serverless-devs/issues) 中进行反馈和交流。如果您想要加入我们的讨论组或者了解 FC 组件的最新动态，您可以通过以下渠道进行：
-
-<p align="center">
-
-| <img src="https://serverless-article-picture.oss-cn-hangzhou.aliyuncs.com/1635407298906_20211028074819117230.png" width="130px" > | <img src="https://serverless-article-picture.oss-cn-hangzhou.aliyuncs.com/1635407044136_20211028074404326599.png" width="130px" > | <img src="https://serverless-article-picture.oss-cn-hangzhou.aliyuncs.com/1635407252200_20211028074732517533.png" width="130px" > |
-| --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| <center>微信公众号：`serverless`</center>                                                                                         | <center>微信小助手：`xiaojiangwh`</center>                                                                                        | <center>钉钉交流群：`33947367`</center>                                                                                           |
-
-</p>
-</devgroup>
-
-<testEvent>
-</testEvent>
+```
+.
+├── code/
+│   ├── main.go       # HTTP server
+│   ├── Dockerfile    # Custom container build
+│   ├── go.mod
+│   └── go.sum
+├── s.yaml            # Serverless Devs deployment config
+└── example.event.json # Sample /invoke payload
+```
