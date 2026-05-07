@@ -61,101 +61,122 @@ func joinImage(prefix, image string) string {
 	return prefix + "/" + image
 }
 
+func parseRegistry(ref string) (string, error) {
+	r, err := name.ParseReference(ref)
+	if err != nil {
+		return "", err
+	}
+	return r.Context().RegistryStr(), nil
+}
+
+func buildAuth(user, pwd string) authn.Authenticator {
+	if user == "" {
+		return authn.Anonymous
+	}
+	return &authn.Basic{Username: user, Password: pwd}
+}
+
+func resolveRegistries(req *CopyRequest) (srcRegistry, destRegistry string, err error) {
+	if len(req.Images) == 0 {
+		return "", "", fmt.Errorf("images list is empty")
+	}
+	if len(req.Images[0]) != 2 {
+		return "", "", fmt.Errorf("each image must be a [src, dest] pair")
+	}
+
+	srcRef := joinImage(req.SrcPrefix, req.Images[0][0])
+	if srcRegistry, err = parseRegistry(srcRef); err != nil {
+		return "", "", fmt.Errorf("invalid src image: %w", err)
+	}
+
+	destRef := joinImage(req.DestPrefix, req.Images[0][1])
+	if destRegistry, err = parseRegistry(destRef); err != nil {
+		return "", "", fmt.Errorf("invalid dest image: %w", err)
+	}
+
+	return srcRegistry, destRegistry, nil
+}
+
+func buildKeychain(srcRegistry, destRegistry, srcUser, srcPwd, destUser, destPwd string) *registryKeychain {
+	return &registryKeychain{
+		srcRegistry:  srcRegistry,
+		srcAuth:      buildAuth(srcUser, srcPwd),
+		destRegistry: destRegistry,
+		destAuth:     buildAuth(destUser, destPwd),
+	}
+}
+
+func copyImage(ctx context.Context, kc *registryKeychain, srcRef, destRef string) error {
+	opts := []crane.Option{
+		crane.WithAuthFromKeychain(kc),
+		crane.WithContext(ctx),
+	}
+	return crane.Copy(srcRef, destRef, opts...)
+}
+
+func doCopy(req CopyRequest) ([]CopyResult, error) {
+	srcRegistry, destRegistry, err := resolveRegistries(&req)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.MaxConcurrent <= 0 {
+		req.MaxConcurrent = 3
+	}
+
+	kc := buildKeychain(srcRegistry, destRegistry, req.SrcUser, req.SrcPwd, req.DestUser, req.DestPwd)
+	results := make([]CopyResult, len(req.Images))
+	var mu sync.Mutex
+
+	g, ctx := errgroup.WithContext(context.Background())
+	g.SetLimit(req.MaxConcurrent)
+
+	for i, pair := range req.Images {
+		i, pair := i, pair // capture loop vars
+		g.Go(func() error {
+			srcRef := joinImage(req.SrcPrefix, pair[0])
+			destRef := joinImage(req.DestPrefix, pair[1])
+			label := pair[0] + " -> " + pair[1]
+
+			if err := copyImage(ctx, kc, srcRef, destRef); err != nil {
+				mu.Lock()
+				results[i] = CopyResult{Image: label, Src: srcRef, Dest: destRef, Error: err.Error()}
+				mu.Unlock()
+				return nil // continue processing other images
+			}
+			mu.Lock()
+			results[i] = CopyResult{Image: label, Src: srcRef, Dest: destRef}
+			mu.Unlock()
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+func handleInvoke(c *gin.Context) {
+	var req CopyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	results, err := doCopy(req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"results": results})
+}
+
 func main() {
 	r := gin.Default()
 
-	r.POST("/invoke", func(c *gin.Context) {
-		var req CopyRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-
-		if len(req.Images) == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "images list is empty"})
-			return
-		}
-
-		if req.MaxConcurrent <= 0 {
-			req.MaxConcurrent = 3
-		}
-
-		// Determine canonical registry names from the first resolved image.
-		var srcRegistry, destRegistry string
-		if len(req.Images) > 0 {
-			if len(req.Images[0]) != 2 {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "each image must be a [src, dest] pair"})
-				return
-			}
-			srcRef := joinImage(req.SrcPrefix, req.Images[0][0])
-			r, err := name.ParseReference(srcRef)
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid src image: %v", err)})
-				return
-			}
-			srcRegistry = r.Context().RegistryStr()
-
-			destRef := joinImage(req.DestPrefix, req.Images[0][1])
-			r, err = name.ParseReference(destRef)
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid dest image: %v", err)})
-				return
-			}
-			destRegistry = r.Context().RegistryStr()
-		}
-
-		// Build authenticators.
-		srcAuth := authn.Anonymous
-		if req.SrcUser != "" {
-			srcAuth = &authn.Basic{Username: req.SrcUser, Password: req.SrcPwd}
-		}
-		destAuth := authn.Anonymous
-		if req.DestUser != "" {
-			destAuth = &authn.Basic{Username: req.DestUser, Password: req.DestPwd}
-		}
-
-		kc := &registryKeychain{
-			srcRegistry:  srcRegistry,
-			srcAuth:      srcAuth,
-			destRegistry: destRegistry,
-			destAuth:     destAuth,
-		}
-
-		results := make([]CopyResult, len(req.Images))
-		var mu sync.Mutex
-
-		g, ctx := errgroup.WithContext(context.Background())
-		g.SetLimit(req.MaxConcurrent)
-
-		for i, pair := range req.Images {
-			i, pair := i, pair // capture loop vars
-			g.Go(func() error {
-				srcRef := pair[0]
-				destRef := pair[1]
-				opts := []crane.Option{
-					crane.WithAuthFromKeychain(kc),
-					crane.WithContext(ctx),
-				}
-				if err := crane.Copy(srcRef, destRef, opts...); err != nil {
-					mu.Lock()
-					results[i] = CopyResult{Image: pair[0] + " -> " + pair[1], Src: srcRef, Dest: destRef, Error: err.Error()}
-					mu.Unlock()
-					return nil // continue processing other images
-				}
-				mu.Lock()
-				results[i] = CopyResult{Image: pair[0] + " -> " + pair[1], Src: srcRef, Dest: destRef}
-				mu.Unlock()
-				return nil
-			})
-		}
-
-		if err := g.Wait(); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{"results": results})
-	})
+	r.POST("/invoke", handleInvoke)
 
 	r.POST("/initialize", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "initialize ok"})
