@@ -1,7 +1,7 @@
 IMAGE := crane-copy
 CONTAINER := copy-debug
 
-.PHONY: build run test stop clean
+.PHONY: build run test stop clean push-tcr
 
 build:
 	podman build -t $(IMAGE) .
@@ -19,3 +19,7 @@ stop:
 clean: stop
 	podman rm $(CONTAINER)
 
+TCR-URL := ccr.ccs.tencentyun.com/service12/$(IMAGE)
+push-tcr:
+	podman tag localhost/$(IMAGE) $(TCR-URL)
+	podman push $(TCR-URL)

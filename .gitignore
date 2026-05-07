@@ -26,6 +26,9 @@ vendor/
 .DS_Store
 Thumbs.db
 
+# Environment variables
+.env
+
 # Build artifacts
 dist/
 build/

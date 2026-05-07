@@ -18,9 +18,19 @@ resources:
       cpu: 1
       diskSize: 512
       customContainerConfig:
-        image: ""
+        image: "ccr.ccs.tencentyun.com/service12/crane-copy:latest"
         port: 8080
+        registryConfig:
+          authConfig:
+            userName: "${env('REG_USER')}"
+            password: "${env('REG_PWD')}"
       internetAccess: true
+      logConfig:
+        enableInstanceMetrics: false
+        enableRequestMetrics: false
+        logBeginRule: DefaultRegex
+        logstore: default-logs
+        project: serverless-cn-hongkong-82dcb112-fd86-5f04-b26c-a921f9a1cb72
       triggers:
         - triggerName: copy-http
           triggerType: http
