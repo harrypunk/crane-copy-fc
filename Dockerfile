@@ -1,13 +1,18 @@
-FROM golang:1.24
+# Build stage
+FROM docker.io/golang:1.26.2-alpine3.22 AS builder
 
-
-RUN mkdir -p /usr/src/app
-WORKDIR /usr/src
+WORKDIR /app
 COPY . .
 
 RUN go env -w GO111MODULE=on
 RUN go env -w GOPROXY=https://goproxy.cn,direct
-RUN go mod tidy
-RUN go build -o bootstrap main.go
-RUN cp bootstrap  /usr/src/app/bootstrap
-ENTRYPOINT ["/usr/src/app/bootstrap"]
+RUN go mod download
+RUN CGO_ENABLED=0 go build -o bootstrap main.go
+
+# Runtime stage
+FROM docker.io/library/alpine:latest
+
+WORKDIR /app
+COPY --from=builder /app/bootstrap .
+
+ENTRYPOINT ["./bootstrap"]

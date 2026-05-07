@@ -1,0 +1,18 @@
+# git
+.git
+.gitignore
+
+# docs
+*.md
+example.event.json
+
+# deploy
+s.yaml
+
+# build artifacts
+bootstrap
+*.exe
+
+# ide
+.idea
+.vscode
