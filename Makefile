@@ -12,7 +12,7 @@ run:
 test:
 	curl -s -X POST http://localhost:7070/invoke \
 		-H 'Content-Type: application/json' \
-		-d @build/test.json | jq .
+		-d @build/test.json
 
 stop:
 	podman stop $(CONTAINER)
