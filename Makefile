@@ -1,5 +1,5 @@
 IMAGE := crane-copy
-CONTAINER := localhost/copy-debug
+CONTAINER := copy-debug
 
 .PHONY: build run test stop clean
 
