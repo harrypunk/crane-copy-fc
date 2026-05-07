@@ -3,15 +3,23 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
+	"github.com/google/go-containerregistry/pkg/logs"
 	"github.com/google/go-containerregistry/pkg/name"
 	"golang.org/x/sync/errgroup"
 )
+
+func init() {
+	// Enable crane progress output.
+	logs.Progress = log.New(os.Stdout, "crane: ", log.LstdFlags)
+}
 
 // CopyRequest is the expected JSON body for /invoke.
 type CopyRequest struct {
@@ -124,6 +132,9 @@ func doCopy(req CopyRequest) ([]CopyResult, error) {
 		req.MaxConcurrent = 3
 	}
 
+	log.Printf("[copy] src_registry=%s dest_registry=%s images=%d concurrent=%d",
+		srcRegistry, destRegistry, len(req.Images), req.MaxConcurrent)
+
 	kc := buildKeychain(srcRegistry, destRegistry, req.SrcUser, req.SrcPwd, req.DestUser, req.DestPwd)
 	results := make([]CopyResult, len(req.Images))
 	var mu sync.Mutex
@@ -138,12 +149,15 @@ func doCopy(req CopyRequest) ([]CopyResult, error) {
 			destRef := joinImage(req.DestPrefix, pair[1])
 			label := pair[0] + " -> " + pair[1]
 
+			log.Printf("[copy] starting %s", label)
 			if err := copyImage(ctx, kc, srcRef, destRef); err != nil {
+				log.Printf("[copy] failed  %s: %v", label, err)
 				mu.Lock()
 				results[i] = CopyResult{Image: label, Src: srcRef, Dest: destRef, Error: err.Error()}
 				mu.Unlock()
 				return nil // continue processing other images
 			}
+			log.Printf("[copy] success %s", label)
 			mu.Lock()
 			results[i] = CopyResult{Image: label, Src: srcRef, Dest: destRef}
 			mu.Unlock()
@@ -154,18 +168,31 @@ func doCopy(req CopyRequest) ([]CopyResult, error) {
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
+
+	success, failed := 0, 0
+	for _, r := range results {
+		if r.Error == "" {
+			success++
+		} else {
+			failed++
+		}
+	}
+	log.Printf("[copy] done success=%d failed=%d", success, failed)
+
 	return results, nil
 }
 
 func handleInvoke(c *gin.Context) {
 	var req CopyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("[invoke] bad request: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	results, err := doCopy(req)
 	if err != nil {
+		log.Printf("[invoke] copy error: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -179,6 +206,7 @@ func main() {
 	r.POST("/invoke", handleInvoke)
 
 	r.POST("/initialize", func(c *gin.Context) {
+		log.Println("[initialize] ok")
 		c.JSON(http.StatusOK, gin.H{"message": "initialize ok"})
 	})
 
@@ -186,7 +214,8 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"message": "hello world"})
 	})
 
+	log.Println("[server] starting on :8080")
 	if err := r.Run(":8080"); err != nil {
-		panic(err)
+		log.Fatalf("[server] failed: %v", err)
 	}
 }
