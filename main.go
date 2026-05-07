@@ -15,14 +15,14 @@ import (
 
 // CopyRequest is the expected JSON body for /invoke.
 type CopyRequest struct {
-	SrcPrefix     string   `json:"src_prefix"`
-	DestPrefix    string   `json:"dest_prefix"`
-	Images        []string `json:"images"`
-	MaxConcurrent int      `json:"max_concurrent"`
-	SrcUser       string   `json:"src_user"`
-	SrcPwd        string   `json:"src_pwd"`
-	DestUser      string   `json:"dest_user"`
-	DestPwd       string   `json:"dest_pwd"`
+	SrcPrefix     string      `json:"src_prefix"`
+	DestPrefix    string      `json:"dest_prefix"`
+	Images        [][2]string `json:"images"`
+	MaxConcurrent int         `json:"max_concurrent"`
+	SrcUser       string      `json:"src_user"`
+	SrcPwd        string      `json:"src_pwd"`
+	DestUser      string      `json:"dest_user"`
+	DestPwd       string      `json:"dest_pwd"`
 }
 
 // CopyResult reports the outcome of a single image copy.
@@ -83,7 +83,11 @@ func main() {
 		// Determine canonical registry names from the first resolved image.
 		var srcRegistry, destRegistry string
 		if len(req.Images) > 0 {
-			srcRef := joinImage(req.SrcPrefix, req.Images[0])
+			if len(req.Images[0]) != 2 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "each image must be a [src, dest] pair"})
+				return
+			}
+			srcRef := joinImage(req.SrcPrefix, req.Images[0][0])
 			r, err := name.ParseReference(srcRef)
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid src image: %v", err)})
@@ -91,7 +95,7 @@ func main() {
 			}
 			srcRegistry = r.Context().RegistryStr()
 
-			destRef := joinImage(req.DestPrefix, req.Images[0])
+			destRef := joinImage(req.DestPrefix, req.Images[0][1])
 			r, err = name.ParseReference(destRef)
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid dest image: %v", err)})
@@ -123,23 +127,23 @@ func main() {
 		g, ctx := errgroup.WithContext(context.Background())
 		g.SetLimit(req.MaxConcurrent)
 
-		for i, img := range req.Images {
-			i, img := i, img // capture loop vars
+		for i, pair := range req.Images {
+			i, pair := i, pair // capture loop vars
 			g.Go(func() error {
-				srcRef := joinImage(req.SrcPrefix, img)
-				destRef := joinImage(req.DestPrefix, img)
+				srcRef := pair[0]
+				destRef := pair[1]
 				opts := []crane.Option{
 					crane.WithAuthFromKeychain(kc),
 					crane.WithContext(ctx),
 				}
 				if err := crane.Copy(srcRef, destRef, opts...); err != nil {
 					mu.Lock()
-					results[i] = CopyResult{Image: img, Src: srcRef, Dest: destRef, Error: err.Error()}
+					results[i] = CopyResult{Image: pair[0] + " -> " + pair[1], Src: srcRef, Dest: destRef, Error: err.Error()}
 					mu.Unlock()
 					return nil // continue processing other images
 				}
 				mu.Lock()
-				results[i] = CopyResult{Image: img, Src: srcRef, Dest: destRef}
+				results[i] = CopyResult{Image: pair[0] + " -> " + pair[1], Src: srcRef, Dest: destRef}
 				mu.Unlock()
 				return nil
 			})

@@ -6,7 +6,7 @@ An Aliyun Function Compute (FC3) custom-container service that copies Docker ima
 
 ### `POST /invoke`
 
-Accepts a JSON payload with image names (tags) and copies them from a source registry prefix to a destination registry prefix.
+Accepts a JSON payload with image pairs and copies them concurrently.
 
 **Request body:**
 
@@ -15,9 +15,9 @@ Accepts a JSON payload with image names (tags) and copies them from a source reg
   "src_prefix": "docker.io/library",
   "dest_prefix": "registry.cn-hongkong.aliyuncs.com/myproj",
   "images": [
-    "nginx:1.25",
-    "redis:7.2",
-    "busybox:1.36"
+    ["nginx:1.25", "nginx:1.25"],
+    ["redis:7.2", "redis:7.2"],
+    ["busybox:1.36", "my-custom-busybox:1.36"]
   ],
   "max_concurrent": 3,
   "src_user": "",
@@ -31,22 +31,20 @@ Accepts a JSON payload with image names (tags) and copies them from a source reg
 |-------|------|-------------|
 | `src_prefix` | `string` | Source registry + namespace prefix (e.g. `docker.io/library`) |
 | `dest_prefix` | `string` | Destination registry + namespace prefix (e.g. `registry.cn-hongkong.aliyuncs.com/myproj`) |
-| `images` | `[]string` | Image names/tags to copy (e.g. `nginx:1.25`) |
+| `images` | `[][2]string` | Array of `[src_suffix, dest_suffix]` pairs. Full refs are built by joining prefix + suffix with `/`. |
 | `max_concurrent` | `int` | Max parallel copies (default: 3) |
 | `src_user` | `string` | Source registry username (optional) |
 | `src_pwd` | `string` | Source registry password (optional) |
 | `dest_user` | `string` | Destination registry username (optional) |
 | `dest_pwd` | `string` | Destination registry password (optional) |
 
-Full image references are built by joining prefix + `images[i]` with `/`.
-
 **Response:**
 
 ```json
 {
   "results": [
-    {"image": "nginx:1.25", "src": "docker.io/library/nginx:1.25", "dest": "registry.cn-hongkong.aliyuncs.com/myproj/nginx:1.25"},
-    {"image": "redis:7.2", "src": "docker.io/library/redis:7.2", "dest": "registry.cn-hongkong.aliyuncs.com/myproj/redis:7.2", "error": "..."}
+    {"image": "nginx:1.25 -> nginx:1.25", "src": "docker.io/library/nginx:1.25", "dest": "registry.cn-hongkong.aliyuncs.com/myproj/nginx:1.25"},
+    {"image": "busybox:1.36 -> my-custom-busybox:1.36", "src": "...", "dest": "...", "error": "..."}
   ]
 }
 ```
