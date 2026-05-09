@@ -1,13 +1,18 @@
 IMAGE := crane-copy
 CONTAINER := copy-debug
+TAG ?= latest
+LOCAL_IMAGE := $(IMAGE):$(TAG)
+
+TCR_PREFIX := ccr.ccs.tencentyun.com/service12/
+REMOTE_IMAGE := $(TCR_PREFIX)$(LOCAL_IMAGE)
 
 .PHONY: build run test stop clean push-tcr
 
 build:
-	podman build -t $(IMAGE) .
+	podman build -t $(LOCAL_IMAGE) .
 
 run:
-	podman run -d --name $(CONTAINER) -p 7070:8080 $(IMAGE)
+	podman run -d --name $(CONTAINER) -p 7070:8080 $(LOCAL_IMAGE)
 
 test:
 	curl -s -X POST http://localhost:7070/invoke \
@@ -16,10 +21,10 @@ test:
 
 stop:
 	podman stop $(CONTAINER)
+
 clean: stop
 	podman rm $(CONTAINER)
 
-TCR-URL := ccr.ccs.tencentyun.com/service12/$(IMAGE)
-push-tcr:
-	podman tag localhost/$(IMAGE) $(TCR-URL)
-	podman push $(TCR-URL)
+push-tcr: build
+	podman tag $(LOCAL_IMAGE) $(REMOTE_IMAGE)
+	podman push $(REMOTE_IMAGE)
