@@ -18,7 +18,7 @@ resources:
       cpu: 1
       diskSize: 512
       customContainerConfig:
-        image: "ccr.ccs.tencentyun.com/service12/crane-copy:latest"
+        image: "ccr.ccs.tencentyun.com/service12/crane-copy:1.2"
         port: 8080
         registryConfig:
           authConfig:
