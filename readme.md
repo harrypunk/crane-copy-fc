@@ -16,7 +16,7 @@ Accepts a JSON payload with image pairs and copies them concurrently.
   "dest_prefix": "registry.cn-hongkong.aliyuncs.com/myproj",
   "images": [
     ["nginx:1.25", "nginx:1.25"],
-    ["redis:7.2", "redis:7.2"],
+    ["redis:7.2", ""],
     ["busybox:1.36", "my-custom-busybox:1.36"]
   ],
   "max_concurrent": 3,
@@ -31,12 +31,14 @@ Accepts a JSON payload with image pairs and copies them concurrently.
 |-------|------|-------------|
 | `src_prefix` | `string` | Source registry + namespace prefix (e.g. `docker.io/library`) |
 | `dest_prefix` | `string` | Destination registry + namespace prefix (e.g. `registry.cn-hongkong.aliyuncs.com/myproj`) |
-| `images` | `[][2]string` | Array of `[src_suffix, dest_suffix]` pairs. Full refs are built by joining prefix + suffix with `/`. |
+| `images` | `[][2]string` | Array of `[src_suffix, dest_suffix]` pairs. Full refs are built by joining prefix + suffix with `/`. If `dest_suffix` is empty (`""`), it defaults to the same value as `src_suffix`. |
 | `max_concurrent` | `int` | Max parallel copies (default: 3) |
 | `src_user` | `string` | Source registry username (optional) |
 | `src_pwd` | `string` | Source registry password (optional) |
 | `dest_user` | `string` | Destination registry username (optional) |
 | `dest_pwd` | `string` | Destination registry password (optional) |
+
+In the example above `["redis:7.2", ""]` copies `docker.io/library/redis:7.2` → `registry.cn-hongkong.aliyuncs.com/myproj/redis:7.2` because the empty dest defaults to the src name.
 
 **Response:**
 
@@ -71,19 +73,36 @@ curl -X POST http://localhost:8080/invoke \
 Make sure you have [Serverless Devs](https://www.serverless-devs.com) installed and configured.
 
 ```bash
+export REG_USER='your_registry_username'
+export REG_PWD='your_registry_password'
 s deploy -y
 ```
 
-> **Note:** Update `s.yaml` `customContainerConfig.image` to your actual ACR image URL before deploying.
+> **Note:** Update `s.yaml` `customContainerConfig.image` to your actual registry image URL before deploying.
+
+## Post-deploy CLI
+
+```bash
+export REG_USER='...'
+export REG_PWD='...'
+s info    # show deployed function config
+s logs    # tail recent invocation logs
+```
 
 ## Project structure
 
 ```
 .
 ├── main.go           # HTTP server
-├── Dockerfile        # Custom container build
+├── Dockerfile        # Multi-stage build (Alpine runtime)
+├── Makefile          # podman build / run / push helpers
 ├── go.mod
 ├── go.sum
 ├── s.yaml            # Serverless Devs deployment config
-└── example.event.json # Sample /invoke payload
+├── example.event.json # Sample /invoke payload
+├── build/
+│   └── test.json     # Makefile curl test payload
+├── .env.example      # Template for registry credentials
+├── .dockerignore
+└── .gitignore
 ```

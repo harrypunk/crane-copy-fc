@@ -17,7 +17,7 @@ import (
 )
 
 func init() {
-	// Enable crane progress output.
+	// Enable crane progress output so layer pull/push progress is visible.
 	logs.Progress = log.New(os.Stdout, "crane: ", log.LstdFlags)
 }
 
@@ -25,7 +25,7 @@ func init() {
 type CopyRequest struct {
 	SrcPrefix     string      `json:"src_prefix"`
 	DestPrefix    string      `json:"dest_prefix"`
-	Images        [][2]string `json:"images"`
+	Images        [][2]string `json:"images"`        // Each element is [src_suffix, dest_suffix]. Empty dest_suffix defaults to src_suffix.
 	MaxConcurrent int         `json:"max_concurrent"`
 	SrcUser       string      `json:"src_user"`
 	SrcPwd        string      `json:"src_pwd"`
@@ -35,13 +35,14 @@ type CopyRequest struct {
 
 // CopyResult reports the outcome of a single image copy.
 type CopyResult struct {
-	Image string `json:"image"`
-	Src   string `json:"src"`
-	Dest  string `json:"dest"`
+	Image string `json:"image"`         // "src -> dest" label for display
+	Src   string `json:"src"`           // Fully resolved source reference
+	Dest  string `json:"dest"`          // Fully resolved destination reference
 	Error string `json:"error,omitempty"`
 }
 
-// registryKeychain returns different credentials based on the target registry.
+// registryKeychain implements authn.Keychain so that crane.Copy can use
+// different credentials for the source registry and the destination registry.
 type registryKeychain struct {
 	srcRegistry  string
 	srcAuth      authn.Authenticator
@@ -59,6 +60,9 @@ func (rk *registryKeychain) Resolve(target authn.Resource) (authn.Authenticator,
 	return authn.Anonymous, nil
 }
 
+// joinImage concatenates prefix and image with a single '/' separator.
+// If prefix is empty the image is returned as-is. Trailing slashes on prefix
+// are handled so the result never contains "//".
 func joinImage(prefix, image string) string {
 	if prefix == "" {
 		return image
@@ -69,6 +73,7 @@ func joinImage(prefix, image string) string {
 	return prefix + "/" + image
 }
 
+// parseRegistry extracts the canonical registry hostname from an image reference.
 func parseRegistry(ref string) (string, error) {
 	r, err := name.ParseReference(ref)
 	if err != nil {
@@ -77,6 +82,8 @@ func parseRegistry(ref string) (string, error) {
 	return r.Context().RegistryStr(), nil
 }
 
+// buildAuth returns an authn.Basic authenticator when credentials are provided,
+// otherwise authn.Anonymous for public registries.
 func buildAuth(user, pwd string) authn.Authenticator {
 	if user == "" {
 		return authn.Anonymous
@@ -84,6 +91,9 @@ func buildAuth(user, pwd string) authn.Authenticator {
 	return &authn.Basic{Username: user, Password: pwd}
 }
 
+// resolveRegistries parses the first image pair to determine the canonical
+// source and destination registry names. These are used by the keychain to
+// decide which credentials to send for pull vs push operations.
 func resolveRegistries(req *CopyRequest) (srcRegistry, destRegistry string, err error) {
 	if len(req.Images) == 0 {
 		return "", "", fmt.Errorf("images list is empty")
@@ -105,6 +115,7 @@ func resolveRegistries(req *CopyRequest) (srcRegistry, destRegistry string, err 
 	return srcRegistry, destRegistry, nil
 }
 
+// buildKeychain assembles a registryKeychain with independent source/dest auth.
 func buildKeychain(srcRegistry, destRegistry, srcUser, srcPwd, destUser, destPwd string) *registryKeychain {
 	return &registryKeychain{
 		srcRegistry:  srcRegistry,
@@ -114,6 +125,7 @@ func buildKeychain(srcRegistry, destRegistry, srcUser, srcPwd, destUser, destPwd
 	}
 }
 
+// copyImage wraps crane.Copy with our keychain and context.
 func copyImage(ctx context.Context, kc *registryKeychain, srcRef, destRef string) error {
 	opts := []crane.Option{
 		crane.WithAuthFromKeychain(kc),
@@ -122,7 +134,23 @@ func copyImage(ctx context.Context, kc *registryKeychain, srcRef, destRef string
 	return crane.Copy(srcRef, destRef, opts...)
 }
 
+// normalizeImages fills empty dest_suffix values with their corresponding
+// src_suffix so callers can write ["nginx:1.25", ""] as a shorthand when
+// the destination name should match the source.
+func normalizeImages(images [][2]string) [][2]string {
+	for i := range images {
+		if images[i][1] == "" {
+			images[i][1] = images[i][0]
+		}
+	}
+	return images
+}
+
+// doCopy performs the actual image copies with controlled concurrency.
 func doCopy(req CopyRequest) ([]CopyResult, error) {
+	// Fill empty dest_suffix values before any further processing.
+	req.Images = normalizeImages(req.Images)
+
 	srcRegistry, destRegistry, err := resolveRegistries(&req)
 	if err != nil {
 		return nil, err
@@ -182,6 +210,7 @@ func doCopy(req CopyRequest) ([]CopyResult, error) {
 	return results, nil
 }
 
+// handleInvoke binds the JSON request and triggers the copy workflow.
 func handleInvoke(c *gin.Context) {
 	var req CopyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
