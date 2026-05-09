@@ -3,10 +3,18 @@ CONTAINER := copy-debug
 TAG ?= latest
 LOCAL_IMAGE := $(IMAGE):$(TAG)
 
-TCR_PREFIX := ccr.ccs.tencentyun.com/service12/
+TCR_HOST := ccr.ccs.tencentyun.com
+TCR_PREFIX := $(TCR_HOST)/service12/
 REMOTE_IMAGE := $(TCR_PREFIX)$(LOCAL_IMAGE)
 
-.PHONY: build run test stop clean push-tcr
+# Load registry credentials from .env if present.
+# NOTE: Do NOT wrap values in quotes. Make's include treats quotes as literal
+# characters, so REG_PWD='secret' would include the quotes in the password.
+# Write plain values: REG_PWD=secret
+-include .env
+export
+
+.PHONY: build run test stop clean login-tcr push-tcr
 
 build:
 	podman build -t $(LOCAL_IMAGE) .
@@ -25,6 +33,9 @@ stop:
 clean: stop
 	podman rm $(CONTAINER)
 
-push-tcr: build
+login-tcr:
+	echo $$REG_PWD | podman login $(TCR_HOST) -u $$REG_USER --password-stdin
+
+push-tcr: build login-tcr
 	podman tag $(LOCAL_IMAGE) $(REMOTE_IMAGE)
 	podman push $(REMOTE_IMAGE)
