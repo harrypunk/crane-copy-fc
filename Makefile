@@ -2,6 +2,7 @@ IMAGE := crane-copy
 CONTAINER := copy-debug
 TAG ?= latest
 LOCAL_IMAGE := $(IMAGE):$(TAG)
+ENGINE ?= podman
 
 TCR_HOST := ccr.ccs.tencentyun.com
 TCR_PREFIX := $(TCR_HOST)/service12/
@@ -17,10 +18,10 @@ export
 .PHONY: build run test stop clean login-tcr push-tcr
 
 build:
-	podman build -t $(LOCAL_IMAGE) .
+	$(ENGINE) build -t $(LOCAL_IMAGE) .
 
 run:
-	podman run -d --name $(CONTAINER) -p 7070:8080 $(LOCAL_IMAGE)
+	$(ENGINE) run -d --name $(CONTAINER) -p 7070:8080 $(LOCAL_IMAGE)
 
 test:
 	curl -s -X POST http://localhost:7070/invoke \
@@ -28,14 +29,14 @@ test:
 		-d @build/test.json
 
 stop:
-	podman stop $(CONTAINER)
+	$(ENGINE) stop $(CONTAINER)
 
 clean: stop
-	podman rm $(CONTAINER)
+	$(ENGINE) rm $(CONTAINER)
 
 login-tcr:
-	echo $$REG_PWD | podman login $(TCR_HOST) -u $$REG_USER --password-stdin
+	echo $$REG_PWD | $(ENGINE) login $(TCR_HOST) -u $$REG_USER --password-stdin
 
 push-tcr: build login-tcr
-	podman tag $(LOCAL_IMAGE) $(REMOTE_IMAGE)
-	podman push $(REMOTE_IMAGE)
+	$(ENGINE) tag $(LOCAL_IMAGE) $(REMOTE_IMAGE)
+	$(ENGINE) push $(REMOTE_IMAGE)
