@@ -25,7 +25,7 @@ func init() {
 type CopyRequest struct {
 	SrcPrefix     string      `json:"src_prefix"`
 	DestPrefix    string      `json:"dest_prefix"`
-	Images        [][2]string `json:"images"`        // Each element is [src_suffix, dest_suffix]. Empty dest_suffix defaults to src_suffix.
+	Images        [][2]string `json:"images"` // Each element is [src_suffix, dest_suffix]. Empty dest_suffix defaults to src_suffix.
 	MaxConcurrent int         `json:"max_concurrent"`
 	SrcUser       string      `json:"src_user"`
 	SrcPwd        string      `json:"src_pwd"`
@@ -35,9 +35,9 @@ type CopyRequest struct {
 
 // CopyResult reports the outcome of a single image copy.
 type CopyResult struct {
-	Image string `json:"image"`         // "src -> dest" label for display
-	Src   string `json:"src"`           // Fully resolved source reference
-	Dest  string `json:"dest"`          // Fully resolved destination reference
+	Image string `json:"image"` // "src -> dest" label for display
+	Src   string `json:"src"`   // Fully resolved source reference
+	Dest  string `json:"dest"`  // Fully resolved destination reference
 	Error string `json:"error,omitempty"`
 }
 
@@ -171,7 +171,6 @@ func doCopy(req CopyRequest) ([]CopyResult, error) {
 	g.SetLimit(req.MaxConcurrent)
 
 	for i, pair := range req.Images {
-		i, pair := i, pair // capture loop vars
 		g.Go(func() error {
 			srcRef := joinImage(req.SrcPrefix, pair[0])
 			destRef := joinImage(req.DestPrefix, pair[1])
