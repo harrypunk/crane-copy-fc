@@ -26,7 +26,7 @@ type CopyRequest struct {
 	SrcPrefix     string      `json:"src_prefix"`
 	DestPrefix    string      `json:"dest_prefix"`
 	Images        [][2]string `json:"images"` // Each element is [src_suffix, dest_suffix]. Empty dest_suffix defaults to src_suffix.
-	MaxConcurrent int         `json:"max_concurrent"`
+	MaxConcurrent int         `json:"max_concurrent"` // Max concurrent HTTP jobs while copying a single image (layer pulls/pushes).
 	SrcUser       string      `json:"src_user"`
 	SrcPwd        string      `json:"src_pwd"`
 	DestUser      string      `json:"dest_user"`
@@ -125,11 +125,12 @@ func buildKeychain(srcRegistry, destRegistry, srcUser, srcPwd, destUser, destPwd
 	}
 }
 
-// copyImage wraps crane.Copy with our keychain and context.
-func copyImage(ctx context.Context, kc *registryKeychain, srcRef, destRef string) error {
+// copyImage wraps crane.Copy with our keychain, context and per-image HTTP concurrency.
+func copyImage(ctx context.Context, kc *registryKeychain, srcRef, destRef string, jobs int) error {
 	opts := []crane.Option{
 		crane.WithAuthFromKeychain(kc),
 		crane.WithContext(ctx),
+		crane.WithJobs(jobs),
 	}
 	return crane.Copy(srcRef, destRef, opts...)
 }
@@ -168,7 +169,7 @@ func doCopy(req CopyRequest) ([]CopyResult, error) {
 	var mu sync.Mutex
 
 	g, ctx := errgroup.WithContext(context.Background())
-	g.SetLimit(req.MaxConcurrent)
+	g.SetLimit(1) // copy images one at a time
 
 	for i, pair := range req.Images {
 		g.Go(func() error {
@@ -177,7 +178,7 @@ func doCopy(req CopyRequest) ([]CopyResult, error) {
 			label := pair[0] + " -> " + pair[1]
 
 			log.Printf("[copy] starting %s", label)
-			if err := copyImage(ctx, kc, srcRef, destRef); err != nil {
+			if err := copyImage(ctx, kc, srcRef, destRef, req.MaxConcurrent); err != nil {
 				log.Printf("[copy] failed  %s: %v", label, err)
 				mu.Lock()
 				results[i] = CopyResult{Image: label, Src: srcRef, Dest: destRef, Error: err.Error()}

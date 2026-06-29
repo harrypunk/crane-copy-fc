@@ -2,7 +2,7 @@ IMAGE := crane-copy
 CONTAINER := copy-debug
 TAG ?= latest
 LOCAL_IMAGE := $(IMAGE):$(TAG)
-ENGINE ?= podman
+ENGINE ?= docker
 
 TCR_HOST := ccr.ccs.tencentyun.com
 TCR_PREFIX := $(TCR_HOST)/service12/
