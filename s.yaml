@@ -12,13 +12,13 @@ resources:
       region: ${vars.region}
       functionName: "crane-copy"
       runtime: "custom-container"
-      description: 'crane copy'
+      description: "crane copy"
       timeout: 300
       memorySize: 1024
       cpu: 1
       diskSize: 512
       customContainerConfig:
-        image: "ccr.ccs.tencentyun.com/service12/crane-copy:1.2"
+        image: "ccr.ccs.tencentyun.com/service12/crane-copy:2.0"
         port: 8080
         registryConfig:
           authConfig:

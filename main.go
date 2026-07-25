@@ -13,6 +13,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/logs"
 	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -126,11 +127,14 @@ func buildKeychain(srcRegistry, destRegistry, srcUser, srcPwd, destUser, destPwd
 }
 
 // copyImage wraps crane.Copy with our keychain, context and per-image HTTP concurrency.
+// The platform is pinned to linux/amd64 so multi-arch sources always resolve
+// to the amd64 manifest, as required by the target cloud platform.
 func copyImage(ctx context.Context, kc *registryKeychain, srcRef, destRef string, jobs int) error {
 	opts := []crane.Option{
 		crane.WithAuthFromKeychain(kc),
 		crane.WithContext(ctx),
 		crane.WithJobs(jobs),
+		crane.WithPlatform(&v1.Platform{OS: "linux", Architecture: "amd64"}),
 	}
 	return crane.Copy(srcRef, destRef, opts...)
 }
